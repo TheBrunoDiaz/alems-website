@@ -1,12 +1,40 @@
 ---
-// 1. Importamos el cliente de Sanity
-import { client } from '../lib/sanityClient.js';
+// clinica-web/src/pages/index.astro
 
-// 2. Escribimos la consulta para traer los datos.
-// GROQ es el lenguaje de consulta de Sanity.
-// Le pedimos todos los documentos de tipo "landingPage" y solo queremos el título y la descripción del primero.
-const query = '*[_type == "landingPage"][0]{title, description}';
+// 1. Importamos los nuevos "ayudantes" que instalamos
+import { client } from '../lib/sanityClient.js';
+import imageUrlBuilder from '@sanity/image-url';
+import { toHTML } from '@portabletext/to-html';
+
+// Función para construir URLs de imágenes optimizadas desde Sanity
+const builder = imageUrlBuilder(client);
+function urlFor(source) {
+  return builder.image(source);
+}
+
+// Función para extraer el ID de un video de YouTube
+const getYouTubeId = (url) => {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+};
+
+
+// 2. Actualizamos nuestra consulta para traer los NUEVOS campos
+const query = `*[_type == "landingPage"][0]{
+  title,
+  mainImage,
+  longDescription,
+  servicesList,
+  videoUrl
+}`;
 const landingData = await client.fetch(query);
+
+// Procesamos el texto enriquecido a HTML
+const descriptionHtml = landingData.longDescription ? toHTML(landingData.longDescription) : '';
+// Obtenemos el ID del video
+const videoId = getYouTubeId(landingData.videoUrl);
 ---
 
 <html lang="es">
@@ -15,17 +43,59 @@ const landingData = await client.fetch(query);
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
-    <!-- 3. Usamos el título que viene de Sanity -->
     <title>{landingData.title}</title>
   </head>
   <body>
-    <!-- 4. Mostramos los datos en el HTML -->
-    <h1>{landingData.title}</h1>
-    <p>{landingData.description}</p>
+    <main>
+      <h1>{landingData.title}</h1>
+
+      <!-- 3. Mostramos la imagen principal -->
+      {landingData.mainImage && (
+        <img
+          src={urlFor(landingData.mainImage).width(800).url()}
+          alt={`Imagen principal para ${landingData.title}`}
+        />
+      )}
+
+      <!-- 4. Mostramos la descripción detallada (procesada como HTML) -->
+      <div set:html={descriptionHtml} />
+
+      <!-- 5. Mostramos la lista de servicios -->
+      {landingData.servicesList && (
+        <>
+          <h2>Beneficios del Tratamiento</h2>
+          <ul>
+            {landingData.servicesList.map(service => (
+              <li>{service}</li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <!-- 6. Mostramos el video de YouTube embebido -->
+      {videoId && (
+        <div class="video-container">
+          <iframe
+            src={`https://www.youtube.com/embed/${videoId}`}
+            title="YouTube video player"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </div>
+      )}
+    </main>
     <style>
-      /* Estilos básicos para que se vea bien */
-      body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+      /* Estilos básicos para que se vea mejor */
+      body { font-family: sans-serif; background-color: #f4f4f9; color: #333; }
+      main { max-width: 800px; margin: 40px auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
       h1 { color: #005f73; }
+      h2 { color: #0a9396; border-bottom: 2px solid #e9d8a6; padding-bottom: 0.5rem;}
+      img { width: 100%; height: auto; border-radius: 8px; margin-bottom: 1rem; }
+      ul { list-style-type: '✓'; padding-left: 1.5rem; }
+      li { margin-bottom: 0.5rem; }
+      .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; margin-top: 2rem;}
+      .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
     </style>
   </body>
 </html>
